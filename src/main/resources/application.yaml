@@ -1,0 +1,9 @@
+spring:
+  cloud:
+    function.definition: orderEvents
+    stream:
+      bindings:
+        orderEvents-out-0:
+          destination: edu.events.orderEvents
+        orderEvents-in-0:
+          destination: edu.events.orderEvents
