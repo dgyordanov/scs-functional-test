@@ -7,13 +7,16 @@ import org.springframework.cloud.stream.binder.test.InputDestination;
 import org.springframework.cloud.stream.binder.test.OutputDestination;
 import org.springframework.cloud.stream.binder.test.TestChannelBinderConfiguration;
 import org.springframework.context.annotation.Import;
+import org.springframework.integration.channel.PublishSubscribeChannel;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @SpringBootTest
@@ -35,16 +38,32 @@ class FunctionalTestApplicationTests {
         Field chField = ReflectionUtils.findField(InputDestination.class, "channels");
         chField.setAccessible(true);
         List<SubscribableChannel> channels = (List<SubscribableChannel>) chField.get(inputDestination);
-        SubscribableChannel ch = channels.iterator().next(); // or more elaborate code if there are multiple bindings to find your channel
-        ch.subscribe((x) -> {
-            System.out.println("%%%%% Second subscriber: " + x);
-        });
-		// #### END  workaround to consume events from channels if a subscriber in the prod code exists.
+
+        final List<Message<?>> messages = new ArrayList<>(1);
+        channels.stream()
+                .filter(ch -> "edu.events.orderEvents.destination".equals(getChannelName(ch)))
+                .forEach(ch -> ch.subscribe(m -> {
+                            System.out.println("%%%%% Second subscriber: " + m);
+                            messages.add(m);
+                        }
+                ));
+        // #### END  workaround to consume events from channels if a subscriber in the prod code exists.
 
         orderService.changeOrder();
-        Message<byte[]> event = outputDestination.receive(100, "edu.events.orderEvents");
 
-		assertNotNull(event);
+        assertThat(messages.size()).isEqualTo(1);
+        assertNotNull(messages.get(0).getPayload());
+    }
+
+    private static String getChannelName(SubscribableChannel ch) {
+        Field chNamField = ReflectionUtils.findField(PublishSubscribeChannel.class, "fullChannelName");
+        chNamField.setAccessible(true);
+        try {
+            return (String) chNamField.get(ch);
+        } catch (IllegalAccessException e) {
+            System.err.println(e);
+            return "";
+        }
     }
 
 }
